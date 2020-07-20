@@ -66,14 +66,14 @@ data_errorcon <- data_enut      %>% select(id_vivienda,id_hogar,id_persona)
 
 ##ERRORCON_1: Responde que tiene estudios de magister o doctorado y edad inferior a 21 años
 data_errorcon   <- data_errorcon %>% add_column(ERRORCON_1 = data_enut %>% transmute(errorcon = case_when(c14_1_1 <= 21 & (d12_1_1 == 14 | d12_1_1 == 15) ~ 1, TRUE ~ 0)))
-data_errorcon_1 <- data_errorcon %>% filter(ERRORCON_1 == TRUE)
+data_errorcon_1 <- data_errorcon %>% filter(ERRORCON_1 == 1)
 data_errorcon_1 <- left_join(data_errorcon_1,data_enut, by = c("id_vivienda", "id_hogar", "id_persona"))
 data_errorcon_1 <- data_errorcon_1 %>% select(id_vivienda,id_hogar,id_persona,ERRORCON_1,f11_1_1,f13_1_1)
 data_errorcon_1
 
 ##ERRORCON_2: Errores de rango
 data_errorcon <- data_errorcon %>% add_column(ERRORCON_2   = data_enut %>% transmute(errorcon = case_when(c14_1_1 = between(c14_1_1,0,99) ~ 0, TRUE ~ 1)))
-data_errorcon_2 <- data_errorcon %>% filter(ERRORCON_2 == TRUE)
+data_errorcon_2 <- data_errorcon %>% filter(ERRORCON_2 == 1)
 data_errorcon_2 <- left_join(data_errorcon_2,data_enut, by = c("id_vivienda", "id_hogar", "id_persona"))
 data_errorcon_2 <- data_errorcon_2 %>% select(id_vivienda,id_hogar,id_persona,ERRORCON_2,c14_1_1)
 data_errorcon_2
