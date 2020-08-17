@@ -1,0 +1,175 @@
+---
+title: "Malla de Validación"
+author: "Joao Acharán"
+date: "20 de julio de 2020"
+output: html_document
+---
+
+## Malla de validación
+
+Una malla de validación permite revisar de manera automática la consistencia de la información proveniente de cada encuesta y los rangos de las respuestas, identificando de manera automática cuando un valor o respuesta específica no corresponda a un rango, previamente determinado, o cuando una respuesta sea inconsistente en relación a respuestas anteriores, según los saltos específicos de cada instrumento.
+
+Veremos como programar los siguientes tipos de errores:
+
+i) errores de valores perdidos, asociados a preguntas de respuesta obligatoria que se encuentren sin respuestas (missing); 
+
+ii) errores de programación, como saltos o filtros mal aplicados o preguntas de respuesta múltiples que carezcan de respuesta en al menos una opción;
+
+iii) errores de consistencia, como datos fuera de rangos o extremos (datos que se escapan de los rangos, Ej: Edad.), y detectar inconsistencias lógicas en las respuestas de los participantes.
+
+### Data a utilizar
+
+Para el ejercicio, se utilizará la base de datos de la Encuesta Nacional de Uso del Tiempo (ENUT) 2015. 
+
+Se utilizarán dos versiones de dicha BBDD: una corregida tal como se puede descargar desde la pagina web del Instituto Nacional de Estadísticas y una alterada, en la que se introdujeron errores a propósito para ilustrar el funcionamiento de la malla de validación. Ambas pueden cargarse directamente con el siguiente comando:
+
+```{r setup, message=FALSE, warning=FALSE}
+library(haven)
+data_enut          <- read_sav("raw/BASE_USUARIO_corregida.sav")
+data_enut_alterada <- read_sav("raw/BASE_USUARIO_alterada.sav")
+```
+
+Las bases de datos pueden encontrarse en este link: <a href = "https://github.com/JoaoAcharanR/Malla_validacion/tree/master/raw">click aquí</a>. 
+
+### Paquetes
+
+Otras librerias que será necesario tener cargadas son <CODE>tibble</CODE>, <CODE>tidyr</CODE> y <CODE>dplyr</CODE>.
+
+```{r, message=FALSE, warning=FALSE}
+library(tibble)
+library(tidyr)
+library(dplyr)
+```
+
+### Errores de valores perdidos
+
+En primer lugar, se deberá verificar que todas las variables que debieron a ser respondidas por todos los casos encuestados, no estando sujetas a saltos ni filtros de ningún tipo. Como se trata de preguntas "obligatorias" por las que todos debieron haber pasado, querremos chequear que efectivamente haya sido así. Para eso, verificaremos que no hayan valores perdidas en dichas columnas.
+
+Cada línea de código corresponde a una variable, siendo necesario programar tantas líneas como preguntas obligatorias haya tenido el cuestionario. 
+
+Para efectos de estandarizar, se utiliza la expresión "ERRORMISSING_[variable]". 
+
+```{r,message=FALSE, warning=FALSE}
+data_perdidos <- data_enut %>% mutate(ERRORMISSING_c12_1_1 = case_when(c12_1_1 = is.na(c12_1_1) ~ 1, TRUE ~ 0))
+data_perdidos <- data_perdidos %>% mutate(ERRORMISSING_c13_1_1 = case_when(c13_1_1 = is.na(c13_1_1) ~ 1, TRUE ~ 0))
+data_perdidos <- data_perdidos %>% mutate(ERRORMISSING_c14_1_1 = case_when(c14_1_1 = is.na(c14_1_1) ~ 1, TRUE ~ 0))
+data_perdidos <- data_perdidos %>% mutate(ERRORMISSING_c15_1_1 = case_when(c15_1_1 = is.na(c15_1_1) ~ 1, TRUE ~ 0))
+```
+
+Para generar un reporte resumen de valores perdidos en cada variable se utilizará el siguiente código. Como utilizamos la BBDD corregida, no se encuentran errores de valores perdidos, como se observa en la tabla de salida:
+
+```{r}
+data_perdidos        <-  data_perdidos %>% select(starts_with("ERRORMISSING_"))
+reporte_errormissing <-  tibble(variable = data_perdidos %>% colnames)
+reporte_errormissing <-  reporte_errormissing %>% mutate(errores = data_perdidos %>% colSums(na.rm = TRUE))
+knitr::kable(reporte_errormissing, caption = "Tabla: Reporte de Errores de valores perdidos")
+```
+
+### Errores de programación
+
+Por otra parte, nos interesará constatar que los saltos o filtros que contempla el cuestionario se encuentren bien aplicados, de manera que todos los encuestados hayan pasado por la secuencia lógica de preguntas que les correspondía. 
+
+A modo de ejemplo, en el cuestionario ENUT, quienes respondieron que en sus hogares si trabajó personal de servicio doméstico durante la semana anterior a aquella en la que fue aplicada la encuestada, debieron responder posteriormente la pregunta respecto a cuántas personas prestaron esos servicios en dicha vivienda. 
+
+En este caso, vamos a denominarlos "ERRORPRO_[n° consecutivo del error]".
+
+Por tanto, vamos a programar dos errores: 
+
+i) Si responde que la semana pasada si trabajó personal servicio doméstico y luego no responde cuántas personas prestaron esos servicios; y al revés,
+
+ii) Si responde que la semana pasada NO trabajó personal servicio doméstico y luego responde cuántas personas trabajaron
+
+En esta ocasión, se utilizará la base de datos alterada (con errores)
+
+Primero, se presenta el caso i):
+
+```{r}
+##ERRORPRO_1: Responde que la semana pasada si trabajó personal servicio domestico y luego no responde cuantas personas
+data_errorpro   <- data_enut_alterada %>% mutate(ERRORPRO_1  = case_when(f11_1_1 == 1 & is.na(f12_1_1) ~ 1, TRUE ~ 0))
+data_ERRORPRO_1 <- data_errorpro %>% filter(ERRORPRO_1 == 1)
+data_ERRORPRO_1 <- data_ERRORPRO_1 %>% select(id_vivienda,id_hogar,id_persona,ERRORPRO_1,f11_1_1,f12_1_1)
+knitr::kable(data_ERRORPRO_1, caption = "Tabla: Identificación de observaciones con ERRORPRO_1")
+```
+
+Como se observa, nos encontramos con 7 casos que presentan el error programado, donde a pesar de haber respondido 1 en la pregunta f11_1_1, se encuentra un campo vacio en la pregunta f12_1_1.
+
+Por otro lado, el error ii) se presenta a continuación:
+
+```{r}
+##ERRORPRO_2: Responde que la semana pasada NO trabajó personal servicio domestico y luego responde cuantas personas trabajaron
+data_errorpro   <- data_errorpro %>% mutate(ERRORPRO_2  = case_when(f11_1_1 == 2 & !is.na(f12_1_1) ~ 1, TRUE ~ 0))
+data_ERRORPRO_2 <- data_errorpro %>% filter(ERRORPRO_2 == 1)
+data_ERRORPRO_2 <- data_ERRORPRO_2 %>% select(id_vivienda,id_hogar,id_persona,ERRORPRO_2,f11_1_1,f12_1_1)
+knitr::kable(data_ERRORPRO_2, caption = "Tabla: Identificación de observaciones con ERRORPRO_2")
+```
+
+En este caso, como muestra la tabla de salida precedente, tenemos 10 casos que presentan el error programado, donde a pesar de haber afirmado que nadie trabajó en sus hogares prestando servicio doméstico (f11_1_1 = 2), luego respondieron cuántas personas trabajaron prestando dicho servicio, sin haber operado el salto.
+
+Al contrario, ahora utilizaremos la BBDD oficial (sin errores). En esta oportunidad, vamos a verificar que se encuentre bien programado el salto en pregunta f11_1_1 en cuanto a si trabajó alguién durante la semana anterior en la vivienda prestando servicio doméstico. Quienes responden que si, debieron responder luego el sexo de la persona que trabajó, quienes respondieron que no, se saltan dicha pregunta. 
+
+Por tanto, nuevamente programaremos dos errores:
+
+iii) Si esponde que la semana pasada si trabajó personal servicio domestico y luego no responde sexo de personal domestico, y
+
+iv) Si esponde que la semana pasada no trabajó personal servicio domestico y luego responde sexo de personal domestico
+
+Solo mostraremos el caso del error iii). El resultado esperado será un mensaje que indique que la tabla de salida corresponde a un tibble con 0 observaciones, debido a que no hay casos con error.
+
+```{r}
+##ERRORPRO_3: Responde que la semana pasada si trabajó personal servicio domestico y luego no responde sexo de personal domestico
+data_errorpro   <- data_errorpro %>% mutate(ERRORPRO_3  = case_when(f11_1_1 == 1 & is.na(f13_1_1) ~ 1, TRUE ~ 0))
+data_ERRORPRO_3 <- data_errorpro %>% filter(ERRORPRO_3 == 1)
+data_ERRORPRO_3 <- data_ERRORPRO_3 %>% select(id_vivienda,id_hogar,id_persona,ERRORPRO_3,f11_1_1,f13_1_1)
+knitr::kable(data_ERRORPRO_3, caption = "Tabla: Identificación de observaciones con ERRORPRO_3")
+```
+
+Finalmente, si bien en la programación de cada error se generó una tabla de salida que permitiera identificar los casos comprometidos, al final del proceso se puede obtener también un reporte resumen de la cantidad de errores encontrados en cada variable:
+
+```{r}
+data_errorpro    <-  data_errorpro %>% select(starts_with("ERRORPRO_"))
+reporte_errorpro <-  tibble(variable = data_errorpro %>% colnames)
+reporte_errorpro <-  reporte_errorpro %>% mutate(errores = data_errorpro %>% colSums(na.rm = TRUE))
+knitr::kable(reporte_errorpro, caption = "Tabla: Reporte de Errores de programación")
+```
+
+
+### Errores de consistencia
+
+Finalmente, verificaremos que no existan inconsistencias lógicas en las respuestas de los encuestados (por ejemplo: tener 21 años o menos y afirmar tener nivel educacional de magister o doctarado completo) o la existencia de valores fuera de rango en variables númericas (por ejemplo, variable de edad con casos menores de 18, si es que solo debían responderla mayores de edad).
+
+En este caso, vamos a denominarlos "ERRORCON_[n° consecutivo del error]".
+
+A modo de ejemplo, primero programaremos un caso de respuestas inconsistentes. En este caso, se verificará que no haya casos su edad (c14_1_1) no sea consistente con su nivel educacional (d12_1_1). Para ello, se utilizará la BBDD alterada con errores.
+
+Como se observa en la tabla de salida, tenemos 6 errores con casos cuya edad es inferior a los 20 años, pero declaran poseer estudios de magíster o doctorado.
+
+```{r}
+##ERRORCON_1: Responde que tiene estudios de magister o doctorado y edad inferior a 21 años
+data_errorcon   <- data_enut_alterada %>% mutate(ERRORCON_1 = case_when(c14_1_1 <= 21 & (d12_1_1 == 14 | d12_1_1 == 15) ~ 1, TRUE ~ 0))
+data_errorcon_ce_1 <- data_errorcon %>% filter(ERRORCON_1 == 1)
+data_errorcon_ce_1 <- data_errorcon_ce_1 %>% select(id_vivienda,id_hogar,id_persona,ERRORCON_1,c14_1_1,d12_1_1)
+knitr::kable(data_errorcon_ce_1, caption = "Tabla: Identificación de observaciones con ERRORCON_1")
+```
+
+Para el caso de los errores de rango, se hará uso de la función between, para delimitar el límite inferior y superior en el que se espera que se encuentren los valores, generando un error cuando el valor observado se encuentra fuera de ese rango. En este caso, se utilizará la BBDD corregida, estableciendo un rango que se mueve entre 0 y 99 años.
+
+En este caso, se observa una observación que registra 102 años.
+
+
+```{r}
+##ERRORCON_2: Errores de rango variable EDAD
+data_errorcon <- data_errorcon %>% mutate(ERRORCON_2 = case_when(c14_1_1 = between(c14_1_1,0,99) ~ 0, TRUE ~ 1))
+data_errorcon_se_2 <- data_errorcon %>% filter(ERRORCON_2 == 1)
+data_errorcon_se_2 <- data_errorcon_se_2 %>% select(id_vivienda,id_hogar,id_persona,ERRORCON_2,c14_1_1)
+knitr::kable(data_errorcon_se_2, caption = "Tabla: Identificación de observaciones con ERRORCON_2")
+```
+
+Por último, al igual que en casos anteriores, se puede obtener un reporte resumen con la cantidad de errores encontrados:
+
+```{r}
+data_errorcon    <-  data_errorcon %>% select(starts_with("ERRORCON_"))
+reporte_errorcon <-  tibble(variable = data_errorcon %>% colnames)
+reporte_errorcon <-  reporte_errorcon %>% mutate(errores = data_errorcon %>% colSums(na.rm = TRUE))
+knitr::kable(reporte_errorcon, caption = "Tabla: Reporte de Errores de consistencia")
+```
+
